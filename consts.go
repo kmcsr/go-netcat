@@ -15,4 +15,5 @@ Examples:
     Open a udp connection in text mode at [::]:12345, and then connect to it (let's chat with yourself)
   go-netcat -u -b 8.8.8.8:53
     Open a udp connection to a DNS server with binary mode
+
 `
