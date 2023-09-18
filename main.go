@@ -44,7 +44,7 @@ func init(){
 	flag.Usage = func(){
 		out := flag.CommandLine.Output()
 		fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
-		fmt.Fprintf(out, helpMessage)
+		fmt.Fprintln(out, helpMessage)
 		fmt.Fprintln(out, "Params:")
 		flag.PrintDefaults()
 	}
@@ -75,6 +75,7 @@ func parseFlags(){
 
 func main(){
 	parseFlags()
+	printErr(LICENSE)
 	if udpMode {
 		handleUDP()
 	}else{
