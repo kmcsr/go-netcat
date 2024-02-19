@@ -1,7 +1,7 @@
 
 # go netcat
 
-A netcat cli tool written in golang
+A network debug tool written in golang
 
 ### Install
 

@@ -1,4 +1,3 @@
-
 // Copyright (C) 2023  Kevin Z <zyxkad@gmail.com>
 package main
 
@@ -15,19 +14,19 @@ import (
 )
 
 var (
-	printLicense bool = false
-	noOutputLicense bool = false
-	udpMode bool = false
-	binaryMode bool = false
-	proxyAddr string = ""
-	bufferLen int = 8
-	linebreak string = "lf"
-	linebreakCh string
-	listenAt string = ""
-	targetAddr string
+	printLicense    bool   = false
+	noOutputLicense bool   = false
+	udpMode         bool   = false
+	binaryMode      bool   = false
+	proxyAddr       string = ""
+	bufferLen       int    = 8
+	linebreak       string = "lf"
+	linebreakCh     string
+	listenAt        string = ""
+	targetAddr      string
 )
 
-func init(){
+func init() {
 	flag.BoolVar(&printLicense, "license", printLicense, "Print the license")
 	flag.BoolVar(&noOutputLicense, "no-license", noOutputLicense, "Do not output the license (but you still have to follow it)")
 	flag.BoolVar(&udpMode, "udp", udpMode, "Use UDP mode instead of default TCP")
@@ -41,20 +40,20 @@ func init(){
 	flag.StringVar(&linebreak, "linebreak", linebreak, `The line break, cr='\r', lf='\n', crlf='\r\n'`)
 	flag.StringVar(&listenAt, "listen", listenAt, `Local bind address, aka "-l"`)
 	flag.StringVar(&listenAt, "l", listenAt, `Local bind address, aka "-listen"`)
-	flag.Usage = func(){
+	flag.Usage = func() {
 		out := flag.CommandLine.Output()
 		fmt.Fprintf(out, "Usage of %s:\n", os.Args[0])
 		fmt.Fprint(out, helpMessage)
-		fmt.Fprintln(out, "Params:")
+		fmt.Fprintln(out, "Flags:")
 		flag.PrintDefaults()
 	}
 }
 
-func printErr(args ...any){
+func printErr(args ...any) {
 	fmt.Fprintln(os.Stderr, args...)
 }
 
-func parseFlags(){
+func parseFlags() {
 	flag.Parse()
 	if printLicense {
 		fmt.Print(LICENSE)
@@ -73,18 +72,31 @@ func parseFlags(){
 	targetAddr = flag.Arg(0)
 }
 
-func main(){
+type Dialer interface {
+	Dial(network string, addr string) (c net.Conn, err error)
+	ListenPacket(network string, addr string) (c net.PacketConn, err error)
+}
+
+func main() {
 	parseFlags()
 	printErr(LICENSE)
+	var dialer Dialer = netDialer{}
+	if proxyAddr != "" {
+		var err error
+		if dialer, err = NewSocks5(proxyAddr); err != nil {
+			printErr("Cannot create proxy:", err)
+			os.Exit(1)
+		}
+	}
 	if udpMode {
-		handleUDP()
-	}else{
-		handleTCP()
+		handleUDP(dialer)
+	} else {
+		handleTCP(dialer)
 	}
 }
 
-func handleTCP(){
-	conn, err := net.Dial("tcp", targetAddr)
+func handleTCP(dialer Dialer) {
+	conn, err := dialer.Dial("tcp", targetAddr)
 	if err != nil {
 		printErr("Err when dialing:", err)
 		os.Exit(1)
@@ -92,7 +104,7 @@ func handleTCP(){
 	defer conn.Close()
 	input := bufio.NewScanner(os.Stdin)
 	if binaryMode {
-		go func(){
+		go func() {
 			var err error
 			defer conn.Close()
 			for input.Scan() {
@@ -105,11 +117,11 @@ func handleTCP(){
 						printErr("Err when writing:", err)
 						os.Exit(1)
 					}
-				}else{
+				} else {
 					bts, err := parseBytes(line)
 					if err != nil {
 						printErr("Invaild input:", err)
-					}else if _, err = conn.Write(bts); err != nil {
+					} else if _, err = conn.Write(bts); err != nil {
 						printErr("Err when writing:", err)
 						os.Exit(1)
 					}
@@ -118,7 +130,7 @@ func handleTCP(){
 		}()
 		buf := make([]byte, bufferLen)
 		var (
-			n int
+			n   int
 			err error
 		)
 		for {
@@ -134,8 +146,8 @@ func handleTCP(){
 				return
 			}
 		}
-	}else{
-		go func(){
+	} else {
+		go func() {
 			var err error
 			defer conn.Close()
 			for input.Scan() {
@@ -157,13 +169,9 @@ func handleTCP(){
 	}
 }
 
-func handleUDP(){
-	target, err := net.ResolveUDPAddr("udp", targetAddr)
-	if err != nil {
-		printErr("Err when resolving target:", err)
-		os.Exit(1)
-	}
-	conn, err := net.ListenPacket("udp", listenAt)
+func handleUDP(dialer Dialer) {
+	target := &stringAddr{"udp", targetAddr}
+	conn, err := dialer.ListenPacket("udp", listenAt)
 	if err != nil {
 		printErr("Err when dialing:", err)
 		os.Exit(1)
@@ -172,12 +180,12 @@ func handleUDP(){
 	printErr("# local addr =", conn.LocalAddr().String())
 	input := bufio.NewScanner(os.Stdin)
 	var (
-		n int
+		n    int
 		addr net.Addr
-		buf = make([]byte, 65536)
+		buf  = make([]byte, 65536)
 	)
 	if binaryMode {
-		go func(){
+		go func() {
 			var err error
 			defer conn.Close()
 			for input.Scan() {
@@ -191,11 +199,11 @@ func handleUDP(){
 						printErr("Err when writing:", err)
 						os.Exit(1)
 					}
-				}else{
+				} else {
 					bts, err := parseBytes(line)
 					if err != nil {
 						printErr("Invaild input:", err)
-					}else if _, err = conn.WriteTo(bts, target); err != nil {
+					} else if _, err = conn.WriteTo(bts, target); err != nil {
 						printErr("Err when writing:", err)
 						os.Exit(1)
 					}
@@ -205,8 +213,8 @@ func handleUDP(){
 		for {
 			n, addr, err = conn.ReadFrom(buf)
 			if n != 0 {
-				printErr("# recv from", addr.String())
-				for i, j := 0, bufferLen; i < n; i, j = j, j + bufferLen {
+				printErr("# recv from", addr.String(), "leng =", n)
+				for i, j := 0, bufferLen; i < n; i, j = j, j+bufferLen {
 					if j > n {
 						j = n
 					}
@@ -221,8 +229,8 @@ func handleUDP(){
 				return
 			}
 		}
-	}else{
-		go func(){
+	} else {
+		go func() {
 			var err error
 			defer conn.Close()
 			for input.Scan() {
@@ -237,7 +245,7 @@ func handleUDP(){
 		for {
 			n, addr, err = conn.ReadFrom(buf)
 			if n != 0 {
-				printErr("# recv from", addr.String())
+				printErr("# recv from", addr.String(), "leng =", n)
 				fmt.Println((string)(buf[:n]))
 			}
 			if err != nil {
@@ -251,8 +259,8 @@ func handleUDP(){
 	}
 }
 
-func formatBytes(buf []byte)(string){
-	s := make([]byte, len(buf) * 3)
+func formatBytes(buf []byte) string {
+	s := make([]byte, len(buf)*3)
 	for i, v := range buf {
 		if i != 0 {
 			s = append(s, ' ')
@@ -265,20 +273,20 @@ func formatBytes(buf []byte)(string){
 	return (string)(s)
 }
 
-func parseBytes(line string)(bts []byte, err error){
+func parseBytes(line string) (bts []byte, err error) {
 	fields := strings.Fields(line)
 	bts = make([]byte, len(fields))
 	for i, v := range fields {
 		var (
-			b uint64
-			ok bool
+			b    uint64
+			ok   bool
 			base = 16
 		)
 		if v, ok = strings.CutPrefix(v, "0b"); ok {
 			base = 2
-		}else if v, ok = strings.CutPrefix(v, "0o"); ok {
+		} else if v, ok = strings.CutPrefix(v, "0o"); ok {
 			base = 8
-		}else if v, ok = strings.CutPrefix(v, "0x"); ok {
+		} else if v, ok = strings.CutPrefix(v, "0x"); ok {
 			base = 16
 		}
 		b, err = strconv.ParseUint(v, base, 8)
@@ -289,3 +297,23 @@ func parseBytes(line string)(bts []byte, err error){
 	}
 	return
 }
+
+type netDialer struct{}
+
+func (netDialer) Dial(network string, addr string) (c net.Conn, err error) {
+	return net.Dial(network, addr)
+}
+
+func (netDialer) ListenPacket(network string, addr string) (c net.PacketConn, err error) {
+	return net.ListenPacket(network, addr)
+}
+
+type stringAddr struct {
+	network string
+	addr    string
+}
+
+var _ net.Addr = (*stringAddr)(nil)
+
+func (a *stringAddr) Network() string { return a.network }
+func (a *stringAddr) String() string  { return a.addr }
