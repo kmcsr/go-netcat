@@ -13,6 +13,8 @@ import (
 	"strings"
 )
 
+var BuildVersion string = "dev"
+
 var (
 	printLicense    bool   = false
 	noOutputLicense bool   = false
