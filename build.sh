@@ -2,6 +2,8 @@
 
 curdir="$(dirname $0)"
 
+prefix="go-netcat"
+
 available_platforms=(
 	darwin/amd64 darwin/arm64
 	linux/386 linux/amd64 linux/arm linux/arm64
@@ -21,7 +23,7 @@ export CGO_ENABLED=0
 for p in "${available_platforms[@]}"; do
 	os=${p%/*}
 	arch=${p#*/}
-	target="${outputdir}/go-openbmclapi-${os}-${arch}"
+	target="${outputdir}/${prefix}-${os}-${arch}"
 	if [[ "$os" == "windows" ]]; then
 		target="${target}.exe"
 	fi
